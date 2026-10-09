@@ -1,0 +1,194 @@
+# ============================================================================
+# Docker Compose - Spark + Prometheus + Grafana Monitoring Lab
+# ============================================================================
+
+services:
+
+  # --------------------------------------------------------------------------
+  # Spark Master
+  # --------------------------------------------------------------------------
+  spark-master:
+    image: apache/spark:3.5.6-python3
+    container_name: spark-master
+
+    environment:
+        SPARK_HOME: /opt/spark
+        SPARK_SCALA_VERSION: "2.12"
+        PYSPARK_PYTHON: python3
+
+    # Keep the master process in the foreground so the container stays alive.
+    command:
+      - /opt/java/openjdk/bin/java
+      - -Dspark.metrics.conf=/opt/spark/conf/metrics.properties
+      - -cp
+      - "/opt/spark/jars/*"
+      - org.apache.spark.deploy.master.Master
+      - --host
+      - spark-master
+      - --port
+      - "7077"
+      - --webui-port
+      - "8080"
+
+    ports:
+      - "17077:7077"
+      - "8080:8080"
+
+    volumes:
+      - ./spark/metrics.properties:/opt/spark/conf/metrics.properties:ro
+
+    networks:
+      - monitoring
+
+
+  # --------------------------------------------------------------------------
+  # Spark Worker
+  # --------------------------------------------------------------------------
+  spark-worker:
+    image: apache/spark:3.5.6-python3
+    container_name: spark-worker
+
+    environment:
+        SPARK_HOME: /opt/spark
+        SPARK_SCALA_VERSION: "2.12"
+        PYSPARK_PYTHON: python3
+
+    depends_on:
+      - spark-master
+
+    # Keep the worker process in the foreground.
+    command:
+      - /opt/java/openjdk/bin/java
+      - -Dspark.metrics.conf=/opt/spark/conf/metrics.properties
+      - -cp
+      - "/opt/spark/jars/*"
+      - org.apache.spark.deploy.worker.Worker
+      - --webui-port
+      - "8081"
+      - spark://spark-master:7077
+
+    ports:
+      - "8081:8081"
+
+    volumes:
+      - ./spark/metrics.properties:/opt/spark/conf/metrics.properties:ro
+      - ./data:/opt/spark-data:ro
+
+    networks:
+      - monitoring
+
+
+  # --------------------------------------------------------------------------
+  # Spark Job
+  # --------------------------------------------------------------------------
+  spark-job:
+    image: apache/spark:3.5.6-python3
+    container_name: spark-job
+
+    environment:
+        SPARK_HOME: /opt/spark
+        SPARK_SCALA_VERSION: "2.12"
+        PYSPARK_PYTHON: python3
+
+    depends_on:
+      - spark-master
+      - spark-worker
+
+    ports:
+      - "4040:4040"
+
+    
+    
+    volumes:
+        - ./spark:/opt/spark-apps:ro
+        - ./data:/opt/spark-data:ro
+        - ./spark/metrics.properties:/opt/spark/conf/metrics.properties:ro
+
+
+
+    # Use spark-submit and explicitly limit total executor resources.
+    command:
+      - /opt/spark/bin/spark-submit
+      - --master
+      - spark://spark-master:7077
+      - --deploy-mode
+      - client
+      - --name
+      - CustomerOrdersRevenue
+      - --conf
+      - spark.driver.host=spark-job
+      - --conf
+      - spark.driver.bindAddress=0.0.0.0
+      - --conf
+      - spark.ui.port=4040
+      - --conf
+      - spark.cores.max=1
+      - --conf
+      - spark.executor.instances=1
+      - --conf
+      - spark.executor.cores=1
+      - --conf
+      - spark.executor.memory=1g
+      - --conf
+      - spark.metrics.conf=/opt/spark/conf/metrics.properties
+      - /opt/spark-apps/spark_job.py
+
+    networks:
+      - monitoring
+
+
+  # --------------------------------------------------------------------------
+  # Prometheus
+  # --------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+
+    ports:
+      - "9090:9090"
+
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+
+    depends_on:
+      - spark-master
+      - spark-worker
+
+    networks:
+      - monitoring
+
+
+  # --------------------------------------------------------------------------
+  # Grafana
+  # --------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+
+    ports:
+      - "3000:3000"
+
+    volumes:
+      - grafana-storage:/var/lib/grafana
+
+    depends_on:
+      - prometheus
+
+    networks:
+      - monitoring
+
+
+# ============================================================================
+# Docker Network
+# ============================================================================
+networks:
+  monitoring:
+    driver: bridge
+
+
+# ============================================================================
+# Persistent Grafana Storage
+# ============================================================================
+volumes:
+  grafana-storage:
+

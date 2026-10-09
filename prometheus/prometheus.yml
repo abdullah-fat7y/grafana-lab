@@ -1,0 +1,81 @@
+# ============================================================================
+# Prometheus Configuration
+# ============================================================================
+#
+# Purpose:
+# Prometheus periodically scrapes metrics from Spark's
+# PrometheusServlet endpoints and stores them as time-series data.
+#
+# Spark exposes Prometheus-format metrics through its existing Web UI.
+# ============================================================================
+
+global:
+
+  # How frequently Prometheus collects metrics.
+  scrape_interval: 5s
+
+  # How long Prometheus waits before considering a scrape failed.
+  scrape_timeout: 4s
+
+
+# ============================================================================
+# Scrape Configurations
+# ============================================================================
+
+scrape_configs:
+
+  # --------------------------------------------------------------------------
+  # Spark Driver
+  # --------------------------------------------------------------------------
+  #
+  # The Spark application/driver runs in the spark-job container.
+  #
+  # Docker service name:
+  #     spark-job
+  #
+  # Spark UI:
+  #     http://spark-job:4040
+  #
+  # Prometheus metrics:
+  #     http://spark-job:4040/metrics/prometheus
+  #
+  # --------------------------------------------------------------------------
+  - job_name: "spark-driver"
+
+    metrics_path: "/metrics/prometheus"
+
+    static_configs:
+      - targets:
+          - "spark-job:4040"
+
+
+  # --------------------------------------------------------------------------
+  # Spark Master
+  # --------------------------------------------------------------------------
+  #
+  # The master exposes its own metrics through the same Prometheus servlet.
+  #
+  # --------------------------------------------------------------------------
+  - job_name: "spark-master"
+
+    metrics_path: "/metrics/prometheus"
+
+    static_configs:
+      - targets:
+          - "spark-master:8080"
+
+
+  # --------------------------------------------------------------------------
+  # Spark Worker
+  # --------------------------------------------------------------------------
+  #
+  # The worker also exposes metrics through its Web UI.
+  #
+  # --------------------------------------------------------------------------
+  - job_name: "spark-worker"
+
+    metrics_path: "/metrics/prometheus"
+
+    static_configs:
+      - targets:
+          - "spark-worker:8081"
